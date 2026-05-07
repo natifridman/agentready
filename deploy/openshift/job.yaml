@@ -1,0 +1,85 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agentready-assess
+  labels:
+    app.kubernetes.io/name: agentready
+    app.kubernetes.io/component: assessment
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentready
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: agentready
+          image: registry.access.redhat.com/ubi9/python-312:latest
+          command: ["/bin/bash", "/scripts/entrypoint.sh"]
+          env:
+            # Required
+            - name: REPO_URL
+              value: ""  # Required: set to the git URL of the repo to assess
+            # Optional
+            - name: REPO_BRANCH
+              value: ""
+            - name: REPO_DEPTH
+              value: "1"
+            - name: OUTPUT_FORMAT
+              value: "json"
+            # Git auth (optional, from Secret)
+            - name: GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agentready-git-credentials
+                  key: token
+                  optional: true
+            # S3 upload (optional)
+            - name: S3_BUCKET
+              value: ""
+            - name: S3_ENDPOINT
+              value: ""
+            - name: S3_PREFIX
+              value: "agentready/"
+            - name: AWS_DEFAULT_REGION
+              value: "us-east-1"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: agentready-s3-credentials
+                  key: aws-access-key-id
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agentready-s3-credentials
+                  key: aws-secret-access-key
+                  optional: true
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: entrypoint
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: entrypoint
+          configMap:
+            name: agentready-entrypoint
+            defaultMode: 0555
+# ---
+# To create the Secrets (optional):
+#
+# kubectl create secret generic agentready-git-credentials \
+#   --from-literal=token=ghp_xxxxxxxxxxxx
+#
+# kubectl create secret generic agentready-s3-credentials \
+#   --from-literal=aws-access-key-id=AKIA... \
+#   --from-literal=aws-secret-access-key=...
